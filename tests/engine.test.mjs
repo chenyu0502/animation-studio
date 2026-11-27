@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import { normalizeScript } from '../js/engine/script.js';
 import { compile, charState, flying, groundProps, halfWidth, minGap, touchGap } from '../js/engine/compile.js';
 import { cameraAt } from '../js/engine/render.js';
+import { placeBubble } from '../js/engine/painter.js';
+import { skyColors } from '../js/engine/scene.js';
 import { SAMPLES } from '../js/samples.js';
 
 const finite = (v) => typeof v !== 'number' || Number.isFinite(v);
@@ -146,4 +148,49 @@ test('對方等一下要來找我：我移動時會停在對方碰得到的地�
   });
   const d = Math.abs(xAt(m, 'dog', 3) - xAt(m, 'kid', 3));
   assert.ok(d <= minGap(m.byId.dog, m.byId.kid) * 1.1, `給東西時相距 ${Math.round(d)}`);
+});
+
+// ---- 對話框與字幕 ----
+const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+test('對話框預設放在頭頂上', () => {
+  const b = placeBubble(300, 120, 900, 600);
+  assert.ok(b.y + b.h <= 600 - 12 && Math.abs(b.x + 150 - 900) < 1);
+});
+
+test('對話框避開上方字幕', () => {
+  const cap = { x: 560, y: 42, w: 800, h: 156 };
+  const b = placeBubble(300, 120, 960, 260, [cap]);
+  assert.ok(!hit(b, cap), JSON.stringify(b));
+});
+
+test('特寫時頭頂貼近上緣：兩個對話框不互相重疊，也不壓到字幕', () => {
+  const cap = { x: 460, y: 42, w: 1000, h: 156 };
+  const a = placeBubble(500, 120, 1300, 60, [cap]);
+  const b = placeBubble(500, 120, 1650, 150, [cap, a]);
+  assert.ok(!hit(a, cap) && !hit(b, cap) && !hit(a, b), JSON.stringify({ a, b }));
+});
+
+// ---- 天氣 ----
+test('下雨天的天空比晴天暗、偏灰', () => {
+  const lum = (hex) => { const n = parseInt(hex.slice(1), 16); return ((n >> 16) & 255) * 0.3 + ((n >> 8) & 255) * 0.59 + (n & 255) * 0.11; };
+  const sunny = skyColors('city', 'day', 'none'), rainy = skyColors('city', 'day', 'rain');
+  assert.ok(lum(rainy.top) < lum(sunny.top) && rainy.tint, JSON.stringify(rainy));
+});
+
+// ---- 畫面外進出場 ----
+test('角色可以從畫面外走進來，也可以走出畫面', () => {
+  const m = build({
+    characters: [{ id: 'kid', kind: 'person', x: 40 }, { id: 'cat', kind: 'cat', x: 110, facing: 'left' }],
+    actions: [{ t: 1, who: 'cat', do: 'walk', to: 60, dur: 2 }, { t: 5, who: 'kid', do: 'run', to: -10, dur: 1.5 }],
+  });
+  assert.ok(xAt(m, 'cat', 0.5) > 1920 + halfWidth(m.byId.cat), '一開始貓在右邊畫面外');
+  assert.ok(xAt(m, 'cat', 3.5) < 1800, '貓走進畫面');
+  assert.ok(xAt(m, 'kid', 7) < -halfWidth(m.byId.kid), '小孩跑出左邊畫面');
+});
+
+test('不合理的位置：小於 0 當左邊畫面外、大於 100 當右邊畫面外', () => {
+  const { script } = normalizeScript({ characters: [{ id: 'a', kind: 'dog', x: -50 }, { id: 'b', kind: 'cat', x: 300 }], actions: [{ t: 0, who: 'a', do: 'walk', to: 999 }] });
+  assert.deepEqual(script.characters.map((c) => c.x), [-10, 110]);
+  assert.equal(script.actions[0].to, 110);
 });
