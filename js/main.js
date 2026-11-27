@@ -12,8 +12,9 @@ import { createPostFx } from './postfx.js';
 import cozy from './styles/cozy.js';
 import papercut from './styles/papercut.js';
 import pixel from './styles/pixel.js';
+import sketch from './styles/sketch.js';
 
-const STYLES = [cozy, papercut, pixel];
+const STYLES = [cozy, papercut, pixel, sketch];
 const $ = (id) => document.getElementById(id);
 const view = $('view'), vctx = view.getContext('2d');
 const store = {

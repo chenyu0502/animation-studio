@@ -21,7 +21,7 @@ canvas + 配樂 ──exporter.js（WebCodecs + mp4-muxer）──▶ MP4
   - 特效：9 種。
   - 鏡頭：全景、中景、特寫。
   - 完整清單在 `js/engine/script.js`；Claude Flow 的 `api/_lib/animate.js` 提示詞裡也有一份，**兩邊要一致**。
-- **畫風**：Q 版小鎮風（`cozy`）、剪紙風（`papercut`）、像素風（`pixel`）。每個畫風只要實作 `fillShape`（點列 → 上色）、`strokeLine`、`sky`，可選 `begin`／`post`（整格前後處理）、`caption`、`bubble`、`face`。引擎把所有形狀都轉成點列交給畫風，畫風決定漸層、剪紙邊與投影、低解析度像素化等。
+- **畫風**：Q 版小鎮風（`cozy`）、剪紙風（`papercut`）、像素風（`pixel`）、手繪繪本風（`sketch`：Rough.js 鉛筆描邊、蠟筆紋理填色、perfect-freehand 細線、畫紙紋理，每兩格重畫線條）。每個畫風只要實作 `fillShape`（點列 → 上色）、`strokeLine`、`sky`，可選 `begin`／`post`（整格前後處理）、`caption`、`bubble`、`face`。引擎把所有形狀都轉成點列交給畫風，畫風決定漸層、剪紙邊與投影、低解析度像素化等。
 - **站位**（`compile.js`）：每個角色依實際身體寬度（`halfWidth`，貓狗身體橫躺比人寬）保持距離。一開始擠在一起的角色會被拉開；移動時在整個舞台上挑「和別人重疊最少、離劇本指定位置最近」的落腳點。走過去之後要互動（擁抱、給東西、說話）就站到碰得到對方的距離，要撿東西就站到道具旁邊。貓狗大小由 `core.js` 的 `ANIMAL_SCALE` 決定（狗約大人的 6 成高）。位置 `-10`／`110` 代表左／右邊畫面外：角色可以從畫面外走進來、走出去（`script.js` 的 `stagePos`），畫面外的角色不參與起始站位的拉開。
 - **天氣**（`scene.js`）：下雨、下雪是陰天，不畫太陽與月亮、雲變多變灰；雨天整體色調壓暗。
 - **對話框**（`painter.js` 的 `placeBubble`）：避開正在顯示的字幕與其他對話框；特寫時頭頂上放不下就放到頭的旁邊。
@@ -45,4 +45,4 @@ node --test tests/engine.test.mjs
 node tools/stills.mjs 0 cozy,papercut,pixel 1,3,6 stills.jpg   # 拍範例的單格拼成一張圖（需要全域 Playwright 與 ffmpeg）
 ```
 
-第三方（都是 MIT）：`vendor/mp4-muxer.mjs`（`vendor/mp4-muxer.LICENSE`）、`vendor/pixi.min.mjs`（PixiJS 8.23.0，`vendor/pixi.js.LICENSE`）、`vendor/pixi-filters.mjs`（pixi-filters 6.1.5，`vendor/pixi-filters.LICENSE`；檔案裡的 `from"pixi.js"` 改成 `from"./pixi.min.mjs"`，不需要 import map）。
+第三方（都是 MIT）：`vendor/mp4-muxer.mjs`（`vendor/mp4-muxer.LICENSE`）、`vendor/pixi.min.mjs`（PixiJS 8.23.0，`vendor/pixi.js.LICENSE`）、`vendor/rough.esm.js`（Rough.js 4.6.6，`vendor/rough.LICENSE`）、`vendor/perfect-freehand.mjs`（perfect-freehand 1.2.3，`vendor/perfect-freehand.LICENSE`）、`vendor/pixi-filters.mjs`（pixi-filters 6.1.5，`vendor/pixi-filters.LICENSE`；檔案裡的 `from"pixi.js"` 改成 `from"./pixi.min.mjs"`，不需要 import map）。

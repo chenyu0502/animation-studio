@@ -11,7 +11,8 @@
   import cozy from '../js/styles/cozy.js';
   import papercut from '../js/styles/papercut.js';
   import pixel from '../js/styles/pixel.js';
-  const STY = { cozy, papercut, pixel };
+  import sketch from '../js/styles/sketch.js';
+  const STY = { cozy, papercut, pixel, sketch };
   const models = SAMPLES.map((s) => compile(normalizeScript(s.script).script));
   window.notes = SAMPLES.map((s) => normalizeScript(s.script).notes);
   window.still = (i, style, t) => {
