@@ -7,6 +7,8 @@ export const FPS = 24;
 export const GROUND = 900;
 /** 角色整體放大倍數（1 = 骨架原始尺寸） */
 export const CHAR_SCALE = 1.7;
+/** 貓狗在 CHAR_SCALE 之外的倍數。原本 1.25 會讓一般大小的狗比小孩還高；0.9 時狗約大人的 6 成高。 */
+export const ANIMAL_SCALE = 0.9;
 
 export const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 export const lerp = (a, b, u) => a + (b - a) * u;

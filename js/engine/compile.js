@@ -2,17 +2,59 @@
 // 自動加上的特效與音效（丟中時的撞擊、跳躍、說話），以及鏡頭。
 import { ACTIONS, SIZES } from './script.js';
 import { animalPose, blendPose, idlePose, personPose } from './rig.js';
-import { CHAR_SCALE, EZ, GROUND, clamp, lerp, seg } from './core.js';
+import { ANIMAL_SCALE, CHAR_SCALE, EZ, GROUND, clamp, lerp, seg } from './core.js';
 
 /** 劇本的 0..100 → 世界座標 x */
 export const stageX = (x) => 170 + x * 15.8;
 const BLEND = 0.18;
+/** 舞台上角色中心能到的範圍（世界座標） */
+const MIN_X = 90, MAX_X = 1830;
+
+/**
+ * 角色身體的半寬（世界座標）。貓狗身體橫躺、頭在前面，比人寬很多；
+ * 站位都用它算，角色才不會疊成一團。
+ */
+export function halfWidth(ch) {
+  const s = (SIZES[ch.size] ?? 1) * CHAR_SCALE;
+  if (ch.kind === 'person') return 52 * s;
+  return (ch.kind === 'cat' ? 98 : 105) * ANIMAL_SCALE * s;
+}
+/** 兩個角色站著時至少要隔多遠（各自半寬相加再留一點空隙） */
+export const minGap = (a, b) => halfWidth(a) + halfWidth(b) + 24;
+/** 互動（擁抱、給東西、說話）時站多近：身體剛好碰到 */
+export const touchGap = (a, b) => (halfWidth(a) + halfWidth(b)) * 0.82;
+
+/**
+ * 把一開始的站位拉開：依位置排序，太近的往右推，超出舞台再整體往左推回來。
+ * 角色太多、舞台放不下時，平均分配整個舞台。
+ */
+export function spreadStart(chars, xs) {
+  const order = chars.map((c, i) => i).sort((i, j) => xs[i] - xs[j]);
+  const out = xs.slice();
+  const need = order.slice(1).reduce((sum, k, n) => sum + minGap(chars[order[n]], chars[k]), 0);
+  if (need > MAX_X - MIN_X) {
+    order.forEach((k, n) => { out[k] = MIN_X + ((MAX_X - MIN_X) * n) / Math.max(1, order.length - 1); });
+    return out;
+  }
+  for (let n = 1; n < order.length; n++) {
+    const a = order[n - 1], b = order[n];
+    out[b] = Math.max(out[b], out[a] + minGap(chars[a], chars[b]));
+  }
+  for (let n = order.length - 1; n >= 0; n--) {
+    const b = order[n], next = order[n + 1];
+    const limit = next === undefined ? MAX_X : out[next] - minGap(chars[b], chars[next]);
+    out[b] = Math.min(out[b], limit);
+  }
+  for (const k of order) out[k] = Math.max(MIN_X, out[k]);
+  return out;
+}
 
 export function compile(script) {
   const chars = script.characters;
   const byId = Object.fromEntries(chars.map((c) => [c.id, c]));
   const segs = Object.fromEntries(chars.map((c) => [c.id, []]));
-  const start = Object.fromEntries(chars.map((c) => [c.id, { x: stageX(c.x), facing: c.facing }]));
+  const startX = spreadStart(chars, chars.map((c) => stageX(c.x)));
+  const start = Object.fromEntries(chars.map((c, i) => [c.id, { x: startX[i], facing: c.facing }]));
   const sfx = [];
   const autoFx = [];
   const projectiles = [];
@@ -43,24 +85,65 @@ export function compile(script) {
     return { x: holder && holder !== '__gone' ? placeAt(holder, t).x : x, holder };
   };
 
+  /**
+   * 為移動挑一個落腳點：在整個舞台上找「和別人重疊最少、離原本目的地最近」的位置。
+   * partner 是走過去之後要互動的對象：要站在碰得到他的距離（左右兩側都試）。
+   * 用打分數而不是一個推一個，角色很多時才不會被推回原地或推到舞台邊。
+   */
+  const placeFor = (dest, who, t, partner, fromX, propX = null) => {
+    const me = byId[who];
+    const others = chars.filter((c) => c.id !== who && c.id !== partner).map((c) => ({ x: placeAt(c.id, t).x, gap: minGap(me, c) }));
+    const px = partner ? placeAt(partner, t).x : null, touch = partner ? touchGap(me, byId[partner]) : 0;
+    const cost = (x) => {
+      let c = 0;
+      for (const o of others) c += Math.max(0, o.gap - Math.abs(x - o.x)) * 4;
+      if (partner) c += Math.abs(Math.abs(x - px) - touch) * 6 + Math.max(0, touch * 0.8 - Math.abs(x - px)) * 20;
+      // 走過去要撿的道具：必須站到道具旁邊（60px 內），比避開別人重要
+      if (propX !== null) c += Math.max(0, Math.abs(x - propX) - 60) * 30;
+      // 劇本要角色走去遠處，卻停在原地（看起來像在原地跑步）：扣分
+      if (Math.abs(dest - fromX) > 150) c += Math.max(0, 120 - Math.abs(x - fromX)) * 8;
+      return c + Math.abs(x - dest);
+    };
+    let best = clamp(dest, MIN_X, MAX_X), bestCost = cost(best);
+    for (let x = MIN_X; x <= MAX_X; x += 10) {
+      const c = cost(x);
+      if (c < bestCost - 1e-6) { best = x; bestCost = c; }
+    }
+    return best;
+  };
+
   for (const a of script.actions) {
     const ch = byId[a.who];
     if (!ch) continue;
     const t0 = a.t, t1 = a.t + a.dur;
     const here = placeAt(a.who, t0);
     let facing = here.facing, x1 = here.x;
-    const S = (SIZES[ch.size] ?? 1) * CHAR_SCALE;
-    const gap = (ch.kind === 'person' ? 150 : 150) * S;
     // 移動
     if (ACTIONS[a.do][2]) {
       let dest = null;
-      if (typeof a.to === 'number') dest = stageX(a.to);
-      else if (a.to && byId[a.to]) {
+      // 走過去之後馬上要和誰互動（擁抱、給東西、說話…）：站到碰得到對方的距離
+      const soon = (b) => b !== a && b.t >= t1 - 0.05 && b.t <= t1 + 1.5;
+      const next = script.actions.find((b) => soon(b) && b.who === a.who && b.target && byId[b.target]);
+      // 反過來：別人等一下要來找我互動（例如把東西給我），我也要停在對方碰得到的地方
+      const comer = script.actions.find((b) => soon(b) && b.target === a.who && byId[b.who]);
+      const pick = script.actions.find((b) => soon(b) && b.who === a.who && b.do === 'pickup' && b.prop && propById[b.prop]);
+      let partner = null, propX = null;
+      if (typeof a.to === 'number') {
+        dest = stageX(a.to);
+        const cand = next?.target ?? comer?.who;
+        if (cand && Math.abs(dest - placeAt(cand, t1).x) < minGap(ch, byId[cand]) * 2.5) partner = cand;
+        if (pick) {
+          const g = propPlaceAt(pick.prop, t1);
+          if (!g.holder) propX = g.x;
+        }
+      } else if (a.to && byId[a.to]) {
+        partner = a.to;
         const other = placeAt(a.to, a.do === 'chase' ? t1 : t0).x;
-        dest = other + (here.x < other ? -gap : gap) * (a.do === 'flee' ? -3 : 1);
-      } else if (a.to && propById[a.to]) dest = propPlaceAt(a.to, t0).x + (here.x < propPlaceAt(a.to, t0).x ? -40 : 40);
+        const side = here.x < other ? -1 : 1;
+        dest = a.do === 'flee' ? other - side * 3 * minGap(ch, byId[a.to]) : other + side * touchGap(ch, byId[a.to]);
+      } else if (a.to && propById[a.to]) { propX = propPlaceAt(a.to, t0).x; dest = propX + (here.x < propX ? -40 : 40); }
       else dest = here.x + facing * (a.do === 'flee' ? 500 : 320);
-      x1 = clamp(dest, 90, 1830);
+      x1 = placeFor(clamp(dest, MIN_X, MAX_X), a.who, t1, a.do === 'flee' ? null : partner, here.x, propX);
       if (Math.abs(x1 - here.x) > 4) facing = x1 > here.x ? 1 : -1;
     } else if (a.target && byId[a.target]) {
       const ox = placeAt(a.target, t0).x;

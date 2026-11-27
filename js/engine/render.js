@@ -1,5 +1,5 @@
 // 一格畫面：鏡頭 → 場景三層 → 地上的道具 → 角色 → 飛行的道具 → 特效 → 天氣 → 色調 → 對話框與字幕 → 畫風的後製。
-import { CHAR_SCALE, FPS, GROUND, H, RNG, W, clamp, lerp, seg, EZ } from './core.js';
+import { ANIMAL_SCALE, CHAR_SCALE, FPS, GROUND, H, RNG, W, clamp, lerp, seg, EZ } from './core.js';
 import { SIZES } from './script.js';
 import { charState, flying, groundProps } from './compile.js';
 import { drawCharacter } from './rig.js';
@@ -26,7 +26,7 @@ export function cameraAt(model, t) {
     const ch = model.byId[shot.on];
     const st = charState(model, shot.on, t);
     const S = (SIZES[ch.size] ?? 1) * CHAR_SCALE;
-    const tall = (ch.kind === 'person' ? 270 : 150) * S;
+    const tall = (ch.kind === 'person' ? 270 : 125 * ANIMAL_SCALE) * S;
     const rot = Math.abs(st.pose.rot ?? 0);
     // 頭的高度：躺下（rot）時頭貼近地面
     const headY = GROUND - tall * Math.cos(rot) - (st.pose.bodyY ?? 0) * S - 20;
@@ -87,7 +87,7 @@ export function renderFrame(ctx, model, style, tReal) {
   // 角色（影子先畫）
   const anchors = {};
   const states = s.characters.map((ch) => ({ ch, st: charState(model, ch.id, t) }));
-  for (const { ch, st } of states) style.shadow?.(c, st.x, GROUND, (ch.kind === 'person' ? 62 : 80) * CHAR_SCALE * (SIZES[ch.size] ?? 1), (st.pose.bodyY ?? 0) * CHAR_SCALE, env);
+  for (const { ch, st } of states) style.shadow?.(c, st.x, GROUND, (ch.kind === 'person' ? 62 : 64 * ANIMAL_SCALE) * CHAR_SCALE * (SIZES[ch.size] ?? 1), (st.pose.bodyY ?? 0) * CHAR_SCALE, env);
   for (const { ch, st } of states) {
     anchors[ch.id] = drawCharacter(pt, ch, { ...st, t }, (hold, x, y, S, f) => drawProp(pt, hold, x, y, S, f));
   }

@@ -1,7 +1,7 @@
 // 角色骨架：動作 → 姿勢（關節角度），姿勢 → 形狀（交給畫風去畫）。
 //
 // 角度以「朝下」為 0，正值往角色面向的方向轉。人物的四肢分成前（靠鏡頭）與後；動物有四隻腳、頭、尾巴。
-import { CHAR_SCALE, GROUND, TAU, capsulePts, circlePts, clamp, ellipsePts, lerp, seg, EZ, shade } from './core.js';
+import { ANIMAL_SCALE, CHAR_SCALE, GROUND, TAU, capsulePts, circlePts, clamp, ellipsePts, lerp, seg, EZ, shade } from './core.js';
 import { SIZES } from './script.js';
 
 const dir = (a) => [Math.sin(a), Math.cos(a)];
@@ -279,7 +279,7 @@ function drawHair(pt, ch, T, hc, R, p, layer) {
 }
 
 function drawAnimal(pt, ch, st, drawProp) {
-  const S = (SIZES[ch.size] ?? 1) * 1.25 * CHAR_SCALE, f = st.facing, p = st.pose, key = ch.id, X = st.x;
+  const S = (SIZES[ch.size] ?? 1) * ANIMAL_SCALE * CHAR_SCALE, f = st.facing, p = st.pose, key = ch.id, X = st.x;
   const isCat = ch.kind === 'cat';
   const legH = (isCat ? 40 : 46) * S, bodyRx = (isCat ? 66 : 72) * S, bodyRy = (isCat ? 34 : 38) * S;
   const lie = p.lie, sit = p.sit;

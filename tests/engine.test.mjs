@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeScript } from '../js/engine/script.js';
-import { compile, charState, flying, groundProps } from '../js/engine/compile.js';
+import { compile, charState, flying, groundProps, halfWidth, minGap, touchGap } from '../js/engine/compile.js';
 import { cameraAt } from '../js/engine/render.js';
 import { SAMPLES } from '../js/samples.js';
 
@@ -78,4 +78,72 @@ test('同一顆雪球丟兩次會變成兩顆', () => {
   const m = compile(script);
   assert.equal(m.projectiles.length, 2);
   assert.ok(m.projectiles.every((p) => Number.isFinite(p.t1) && Number.isFinite(p.x0)));
+});
+
+// ---- 站位：角色不能疊成一團（實測 AI 劇本常把角色擠在同一點） ----
+const xAt = (m, id, t) => charState(m, id, t).x;
+const build = (raw) => compile(normalizeScript({ duration: 12, scene: 'park', ...raw }).script);
+
+test('貓狗的身體寬度合理：比人寬，但不會大到像馬', () => {
+  const kid = { kind: 'person', size: 'small' }, adult = { kind: 'person', size: 'normal' }, dog = { kind: 'dog', size: 'normal' };
+  assert.ok(halfWidth(dog) > halfWidth(kid), '狗身體橫躺，比人寬');
+  assert.ok(halfWidth(dog) < halfWidth(adult) * 2.2, '狗不能大到像馬');
+});
+
+test('一開始擠在一起的角色會被拉開', () => {
+  const m = build({ characters: [{ id: 'a', kind: 'dog', x: 50 }, { id: 'b', kind: 'cat', x: 52 }, { id: 'c', kind: 'person', x: 54 }], actions: [{ t: 0, who: 'a', do: 'idle' }] });
+  const xs = ['a', 'b', 'c'].map((id) => xAt(m, id, 0)).sort((p, q) => p - q);
+  assert.ok(xs[1] - xs[0] >= 200 && xs[2] - xs[1] >= 200, `間距不足：${xs.map(Math.round)}`);
+});
+
+test('走過去擁抱時站在碰得到的距離，不會疊在一起', () => {
+  const m = build({
+    characters: [{ id: 'kid', kind: 'person', size: 'small', x: 10 }, { id: 'dog', kind: 'dog', x: 80 }],
+    actions: [{ t: 0.5, who: 'kid', do: 'run', to: 'dog', dur: 1.5 }, { t: 2.2, who: 'kid', do: 'hug', target: 'dog' }],
+  });
+  const d = Math.abs(xAt(m, 'kid', 2.5) - xAt(m, 'dog', 2.5));
+  const { kid, dog } = m.byId;
+  assert.ok(d >= touchGap(kid, dog) * 0.95 && d <= minGap(kid, dog), `擁抱距離 ${Math.round(d)}`);
+});
+
+test('走到數字位置後要互動：會停在對方旁邊，不會停在對方身上', () => {
+  const m = build({
+    characters: [{ id: 'a', kind: 'person', x: 10 }, { id: 'b', kind: 'cat', x: 60 }],
+    actions: [{ t: 0.5, who: 'a', do: 'walk', to: 60, dur: 2 }, { t: 2.6, who: 'a', do: 'give', prop: 'flower', target: 'b' }],
+  });
+  const d = Math.abs(xAt(m, 'a', 2.6) - xAt(m, 'b', 2.6));
+  assert.ok(d >= touchGap(m.byId.a, m.byId.b) * 0.95, `給東西時距離 ${Math.round(d)}`);
+});
+
+test('好幾個角色同時跑到同一點：大家都有移動，而且各自分開', () => {
+  const ids = ['k1', 'k2', 'k3', 'c', 'd'];
+  const m = build({
+    characters: [...['k1', 'k2', 'k3'].map((id, i) => ({ id, kind: 'person', size: 'small', x: 30 + i * 10 })), { id: 'c', kind: 'cat', x: 20 }, { id: 'd', kind: 'dog', x: 70 }],
+    actions: ids.map((who) => ({ t: 1, who, do: 'run', to: 80, dur: 2 })),
+  });
+  for (const id of ids) assert.ok(Math.abs(xAt(m, id, 3.5) - xAt(m, id, 0.5)) > 4 || xAt(m, id, 0.5) > 1300, `${id} 沒有移動`);
+  const xs = ids.map((id) => [id, xAt(m, id, 3.5)]).sort((p, q) => p[1] - q[1]);
+  for (let i = 1; i < xs.length; i++) {
+    const need = (halfWidth(m.byId[xs[i - 1][0]]) + halfWidth(m.byId[xs[i][0]])) * 0.7;
+    assert.ok(xs[i][1] - xs[i - 1][1] >= need, `${xs[i - 1][0]} 與 ${xs[i][0]} 疊在一起：${Math.round(xs[i][1] - xs[i - 1][1])}`);
+  }
+});
+
+test('走過去撿東西：就算旁邊有人，也會站到道具旁邊', () => {
+  const m = build({
+    characters: [{ id: 'boy', kind: 'person', size: 'small', x: 30 }, { id: 'dog', kind: 'dog', x: 60 }],
+    props: [{ id: 'bone', kind: 'bone', x: 32 }],
+    actions: [{ t: 1, who: 'dog', do: 'run', to: 33, dur: 0.6 }, { t: 1.7, who: 'dog', do: 'pickup', prop: 'bone' }],
+  });
+  const bone = groundProps(m, 1.6).find((p) => p.id === 'bone');
+  assert.ok(Math.abs(xAt(m, 'dog', 1.7) - bone.wx) <= 70, `狗離骨頭 ${Math.round(Math.abs(xAt(m, 'dog', 1.7) - bone.wx))}`);
+});
+
+test('對方等一下要來找我：我移動時會停在對方碰得到的地方', () => {
+  const m = build({
+    characters: [{ id: 'dog', kind: 'dog', x: 80 }, { id: 'kid', kind: 'person', x: 60 }],
+    actions: [{ t: 1, who: 'dog', do: 'run', to: 45, dur: 1.5 }, { t: 1.5, who: 'kid', do: 'run', to: 20, dur: 1.3 }, { t: 3, who: 'dog', do: 'give', prop: 'ball', target: 'kid' }],
+  });
+  const d = Math.abs(xAt(m, 'dog', 3) - xAt(m, 'kid', 3));
+  assert.ok(d <= minGap(m.byId.dog, m.byId.kid) * 1.1, `給東西時相距 ${Math.round(d)}`);
 });
