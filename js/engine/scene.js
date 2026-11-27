@@ -60,13 +60,16 @@ export function sceneLayers(scene, time, title = '', weather = 'none') {
   const night = time === 'night', sunset = time === 'sunset';
   const R = RNG('scene', scene, title);
   const layers = [];
+  // 天空（太陽、月亮、雲）在極遠處：鏡頭平移時幾乎不動，只靠雲自己飄。
+  // 原本和山放在同一層（0.35），鏡頭跟拍奔跑的角色時雲在畫面上每秒移動約 300px，看起來像在飛。
+  const skyL = (fn) => layers.push({ factor: 0.08, draw: fn });
   const far = (fn) => layers.push({ factor: 0.35, draw: fn });
   const mid = (fn) => layers.push({ factor: 0.7, draw: fn });
   const near = (fn) => layers.push({ factor: 1, draw: fn });
   const dim = (c, k = 0.35) => (night ? mix(c, '#1c2350', k) : sunset ? mix(c, '#c86a5a', k * 0.35) : c);
 
   // 天體與雲
-  if (scene !== 'room') far((pt, t) => {
+  if (scene !== 'room') skyL((pt, t) => {
     if (overcast) { /* 陰天看不到太陽和月亮 */ }
     else if (night) { pt.fill(circlePts(1500, 190, 62, 36), '#fff4c8', { key: 'moon', outline: false, glow: true }); }
     else if (sunset) pt.fill(circlePts(1380, 520, 120, 40), '#ffd08a', { key: 'sun', outline: false, glow: true });
