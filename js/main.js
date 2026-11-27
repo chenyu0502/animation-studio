@@ -8,6 +8,7 @@ import { FPS, W, H } from './engine/core.js';
 import { SAMPLES } from './samples.js';
 import { canExportMp4, downloadBlob, exportMp4 } from './exporter.js';
 import { readKey, saveKey, waitForBridge } from './ai.js';
+import { createPostFx } from './postfx.js';
 import cozy from './styles/cozy.js';
 import papercut from './styles/papercut.js';
 import pixel from './styles/pixel.js';
@@ -25,7 +26,16 @@ const state = {
   playing: true, frame: 0, start: performance.now(), offset: 0, lastDrawn: -1,
   sound: false, audio: null, audioSrc: null, buffers: new Map(), exporting: false, abort: null, bridge: null, uid: 'local',
   base: null, voicing: false, spoken: -1,
+  fx: null, fxOn: true,
 };
+/** 電影感特效（postfx.js）載入成功且開著 */
+const fxActive = () => !!state.fx && state.fxOn;
+/** 目前顯示、要匯出的畫布：有特效時是 PixiJS 的畫布 */
+const output = () => (fxActive() ? state.fx.canvas : view);
+function paint(t) {
+  renderFrame(vctx, state.model, state.style, t);
+  if (fxActive()) state.fx.render(state.model, state.style.id, t);
+}
 const totalFrames = () => Math.round((state.model?.duration ?? 12) * FPS);
 
 // ---------------------------------------------------------------- 載入劇本
@@ -82,7 +92,7 @@ function draw(f, force = false) {
   if (!state.model || state.exporting) return;
   if (!force && f === state.lastDrawn) return;
   state.lastDrawn = f;
-  try { renderFrame(vctx, state.model, state.style, f / FPS); }
+  try { paint(f / FPS); }
   catch (e) { console.error('[動畫] 繪製失敗', e); }
   $('scrub').value = String(f);
   $('time').textContent = `${(f / FPS).toFixed(1)} / ${state.model.duration.toFixed(1)} 秒`;
@@ -241,7 +251,7 @@ function renderThumbs() {
 const safeName = () => `${state.script.title}_${state.style.name}`.replace(/[\\/:*?"<>|\s]+/g, '');
 $('png').onclick = () => {
   draw(state.frame, true);
-  view.toBlob((b) => b && downloadBlob(b, `${safeName()}_${(state.frame / FPS).toFixed(1)}秒.png`), 'image/png');
+  output().toBlob((b) => b && downloadBlob(b, `${safeName()}_${(state.frame / FPS).toFixed(1)}秒.png`), 'image/png');
 };
 $('mp4').onclick = async () => {
   if (!state.model || state.exporting) return;
@@ -255,8 +265,8 @@ $('mp4').onclick = async () => {
   const [w, h] = $('res').value === '1080' ? [1920, 1080] : [1280, 720];
   try {
     const res = await exportMp4({
-      draw: (t) => renderFrame(vctx, state.model, state.style, t),
-      source: view, frames: totalFrames(), fps: FPS, width: w, height: h, signal: state.abort.signal,
+      draw: (t) => paint(t),
+      source: output(), frames: totalFrames(), fps: FPS, width: w, height: h, signal: state.abort.signal,
       score: () => buildScore(state.model, 48000),
       onProgress: (pct, label) => { $('bar').style.width = pct + '%'; $('progressLabel').textContent = label; },
     });
@@ -346,6 +356,24 @@ buildStylePicker();
 load(SAMPLES[0].script, { prompt: SAMPLES[0].prompt, save: false });
 requestAnimationFrame(tick);
 renderWorks(); syncKey();
+// 電影感特效：動畫先畫出來，再在背景載入 PixiJS（約 1.1 MB）
+state.fxOn = store.get('animate-fx', true);
+function syncFx() {
+  if (!state.fx) return;
+  $('fxLabel').hidden = false;
+  $('fxToggle').checked = state.fxOn;
+  view.style.display = fxActive() ? 'none' : '';
+  state.fx.canvas.style.display = fxActive() ? '' : 'none';
+  draw(state.frame, true);
+}
+$('fxToggle').onchange = (e) => { state.fxOn = e.target.checked; store.set('animate-fx', state.fxOn); syncFx(); };
+createPostFx(view).then((fx) => {
+  if (!fx) return;
+  state.fx = fx;
+  fx.canvas.setAttribute('aria-label', '動畫預覽');
+  view.after(fx.canvas);
+  syncFx();
+}).catch((e) => console.warn('[特效] 無法啟用', e));
 waitForBridge(8000).then((b) => {
   if (!b) return;
   state.bridge = b; state.uid = b.uid ?? 'local';

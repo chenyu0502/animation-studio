@@ -108,3 +108,5 @@ details summary { cursor: pointer; font-size: 0.9rem; }
   .styles { gap: 6px; }
   .export-row .btns, .export-row .btns .btn { width: 100%; }
 }
+
+.fx-toggle { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap; }
