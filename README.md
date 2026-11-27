@@ -22,6 +22,7 @@ canvas + 配樂 ──exporter.js（WebCodecs + mp4-muxer）──▶ MP4
   - 鏡頭：全景、中景、特寫。
   - 完整清單在 `js/engine/script.js`；Claude Flow 的 `api/_lib/animate.js` 提示詞裡也有一份，**兩邊要一致**。
 - **畫風**：Q 版小鎮風（`cozy`）、剪紙風（`papercut`）、像素風（`pixel`）。每個畫風只要實作 `fillShape`（點列 → 上色）、`strokeLine`、`sky`，可選 `begin`／`post`（整格前後處理）、`caption`、`bubble`、`face`。引擎把所有形狀都轉成點列交給畫風，畫風決定漸層、剪紙邊與投影、低解析度像素化等。
+- **站位**（`compile.js`）：每個角色依實際身體寬度（`halfWidth`，貓狗身體橫躺比人寬）保持距離。一開始擠在一起的角色會被拉開；移動時在整個舞台上挑「和別人重疊最少、離劇本指定位置最近」的落腳點。走過去之後要互動（擁抱、給東西、說話）就站到碰得到對方的距離，要撿東西就站到道具旁邊。貓狗大小由 `core.js` 的 `ANIMAL_SCALE` 決定（狗約大人的 6 成高）。
 - **固定種子**：所有隨機都來自 `RNG(...)`，同一份劇本每次畫出來都一樣。
 
 ## 和 Claude Flow 的關係
