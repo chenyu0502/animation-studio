@@ -15,7 +15,7 @@ export function idlePose(time = 0) {
   return {
     bodyY: Math.sin(time * 2.2) * 2, lean: 0, rot: 0, head: Math.sin(time * 1.3) * 0.03,
     armF: [0.14, 0.2], armB: [-0.12, 0.2], legF: [0.06, 0], legB: [-0.06, 0],
-    expr: 'neutral', mouth: 0, sx: 1,
+    expr: 'neutral', mouth: 0, sx: 1, sq: 1,
   };
 }
 
@@ -46,7 +46,9 @@ export function personPose(act, tau, u, ctx) {
       const air = u >= 0.22 && u <= 0.88 ? s(((u - 0.22) / 0.66) * Math.PI) : 0;
       p.bodyY = air * 130 - crouch * 18;
       p.legF = [0.5 * crouch + 0.6 * air, 0.9 * crouch + 1.0 * air]; p.legB = [-0.2 * crouch + 0.2 * air, 0.9 * crouch + 0.9 * air];
-      p.armF = [lerp(0.3, 2.8, air), 0.2]; p.armB = [lerp(-0.3, 2.6, air), 0.2]; p.expr = 'happy'; break;
+      p.armF = [lerp(0.3, 2.8, air), 0.2]; p.armB = [lerp(-0.3, 2.6, air), 0.2]; p.expr = 'happy';
+      // 擠壓伸展：蹲下與落地時壓扁，剛離地時拉長
+      p.sq = 1 - 0.12 * crouch + 0.1 * (u > 0.22 && u < 0.5 ? s(((u - 0.22) / 0.28) * Math.PI) : 0); break;
     }
     case 'wave':
       p.armF = [2.6, 0.5 + 0.45 * s(tau * 14)]; p.head = 0.06; p.expr = 'happy'; p.mouth = 0.4; break;
@@ -77,7 +79,7 @@ export function personPose(act, tau, u, ctx) {
     case 'surprised': {
       const k = EZ.back(seg(u, 0, 0.35));
       p.bodyY = s(seg(u, 0, 0.5) * Math.PI) * 40; p.lean = -0.18 * k; p.armF = [2.2 * k, 0.4]; p.armB = [2.0 * k, 0.4];
-      p.expr = 'wow'; p.mouth = 1; break;
+      p.expr = 'wow'; p.mouth = 1; p.sq = 1 + 0.08 * s(seg(u, 0, 0.3) * Math.PI); break;
     }
     case 'think':
       p.armF = [1.0, 2.5]; p.armB = [0.6, 1.6]; p.head = -0.12; p.expr = 'think'; break;
@@ -124,7 +126,7 @@ export function personPose(act, tau, u, ctx) {
 /** 動物（貓、狗）的姿勢 */
 export function animalPose(act, tau, u, ctx) {
   const s = Math.sin;
-  const p = { bodyY: Math.sin(ctx.time * 2.4) * 1.5, tilt: 0, rot: 0, head: 0, legs: [0, 0, 0, 0], tail: 0.4 + 0.1 * s(ctx.time * 2), wag: 0, sit: 0, lie: 0, expr: 'neutral', mouth: 0, sx: 1, headDown: 0 };
+  const p = { bodyY: Math.sin(ctx.time * 2.4) * 1.5, tilt: 0, rot: 0, head: 0, legs: [0, 0, 0, 0], tail: 0.4 + 0.1 * s(ctx.time * 2), wag: 0, sit: 0, lie: 0, expr: 'neutral', mouth: 0, sx: 1, sq: 1, headDown: 0 };
   const gait = (amp, bounce, stride) => {
     const ph = (ctx.dist / stride) * TAU;
     p.legs = [amp * s(ph), -amp * s(ph), -amp * s(ph + 0.6), amp * s(ph + 0.6)];
@@ -138,7 +140,10 @@ export function animalPose(act, tau, u, ctx) {
     case 'sneak': if (ctx.moving) gait(0.3, 1, 90); p.bodyY -= 12; p.tail = -0.1; p.expr = 'sly'; break;
     case 'jump': {
       const air = u >= 0.2 && u <= 0.88 ? s(((u - 0.2) / 0.68) * Math.PI) : 0;
-      p.bodyY = air * 120; p.legs = [0.8 * air, 0.8 * air, -0.8 * air, -0.8 * air]; p.tilt = -0.25 * s(u * TAU); p.expr = 'happy'; p.tail = 1.3; break;
+      p.bodyY = air * 120; p.legs = [0.8 * air, 0.8 * air, -0.8 * air, -0.8 * air]; p.tilt = -0.25 * s(u * TAU); p.expr = 'happy'; p.tail = 1.3;
+      { const crouch = u < 0.2 ? s((u / 0.2) * Math.PI) : u > 0.88 ? s(((u - 0.88) / 0.12) * Math.PI) : 0;
+        p.sq = 1 - 0.14 * crouch + 0.1 * (u > 0.2 && u < 0.45 ? s(((u - 0.2) / 0.25) * Math.PI) : 0); }
+      break;
     }
     case 'wave': case 'cheer': case 'dance': case 'laugh':
       p.wag = 1; p.bodyY = Math.max(0, s(tau * (act === 'dance' ? 7 : 9))) * (act === 'wave' ? 6 : 20); p.expr = 'happy'; p.mouth = act === 'laugh' ? 1 : 0.6;
@@ -198,8 +203,10 @@ function drawPerson(pt, ch, st, drawProp) {
   const X = st.x;
   // 局部座標（面向右），最後依 facing 鏡射、依 rot 繞腳底旋轉
   const pivot = [X, GROUND];
+  // 擠壓伸展：以腳底為基準垂直縮放，水平反向補償，體積看起來不變
+  const sq = p.sq ?? 1, sqX = 1 / Math.sqrt(sq);
   const tr = ([x, y]) => {
-    let lx = (x - X) * f * p.sx, ly = y;
+    let lx = (x - X) * f * p.sx * sqX, ly = GROUND - (GROUND - y) * sq;
     if (p.rot) {
       const c = Math.cos(p.rot * f), s = Math.sin(p.rot * f), dx = lx, dy = ly - pivot[1];
       lx = dx * c - dy * s; ly = pivot[1] + dx * s + dy * c;
@@ -286,8 +293,10 @@ function drawAnimal(pt, ch, st, drawProp) {
   const by = GROUND - legH * (1 - lie * 0.75) - bodyRy - p.bodyY * S + sit * 10 * S;
   const tilt = p.tilt - sit * 0.45;
   const pivot = [X, GROUND];
+  // 擠壓伸展：以腳底為基準垂直縮放，水平反向補償，體積看起來不變
+  const sq = p.sq ?? 1, sqX = 1 / Math.sqrt(sq);
   const tr = ([x, y]) => {
-    let lx = (x - X) * f * p.sx, ly = y;
+    let lx = (x - X) * f * p.sx * sqX, ly = GROUND - (GROUND - y) * sq;
     if (p.rot) { const c = Math.cos(p.rot * f), s = Math.sin(p.rot * f), dy = ly - pivot[1]; [lx, ly] = [lx * c - dy * s, pivot[1] + lx * s + dy * c]; }
     return [X + lx, ly];
   };

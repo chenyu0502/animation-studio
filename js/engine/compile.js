@@ -10,6 +10,8 @@ export const stageX = (x) => (x < 0 ? OFF_LEFT_X : x > 100 ? OFF_RIGHT_X : 170 +
 const OFF_LEFT_X = -300, OFF_RIGHT_X = 2220;
 const isOff = (wx) => wx < 0 || wx > 1920;
 const BLEND = 0.18;
+/** 轉身過場的秒數 */
+const TURN = 0.18;
 /** 舞台上角色中心能到的範圍（世界座標） */
 const MIN_X = 90, MAX_X = 1830;
 
@@ -271,6 +273,28 @@ export function charState(model, id, t) {
       const end = poseFn(last.act, last.t1 - last.t0, 1, { time: last.t1, dist, moving: false });
       pose = blendPose(end, pose, EZ.io((t - last.t1) / BLEND));
     }
+  }
+  // ---- 動畫原理：轉身過場、起步預備、停步慣性 ----
+  pose = { ...pose, sq: pose.sq ?? 1 };
+  // 轉身：面向改變後 0.18 秒內，身體先壓扁再翻過來（sx 從 -1 經過 0 到 1），不再瞬間翻面
+  let fPrev = model.start[id].facing, turnAt = -Infinity;
+  for (const s of list) { if (s.t0 > t) break; if (s.facing !== fPrev) turnAt = s.t0; fPrev = s.facing; }
+  if (t - turnAt < TURN) {
+    const v = lerp(-1, 1, EZ.io((t - turnAt) / TURN));
+    pose.sx = (pose.sx ?? 1) * (Math.abs(v) < 0.3 ? Math.sign(v || 1) * 0.3 : v);
+  }
+  // 起步預備：移動的前 0.16 秒，身體先往後一縮、蹲低一點
+  if (cur && cur.move && t - cur.t0 < 0.16) {
+    const k = Math.sin(Math.PI * (t - cur.t0) / 0.16);
+    if (isPerson) pose.lean = (pose.lean ?? 0) - 0.14 * k; else pose.tilt = (pose.tilt ?? 0) - 0.08 * k;
+    pose.sq *= 1 - 0.05 * k;
+  }
+  // 停步慣性：剛停下的 0.35 秒，身體往前晃一下再站穩，速度越快晃越多
+  const stop = cur && cur.move ? null : list.filter((s) => s.move && s.t1 <= t).pop();
+  if (stop && t - stop.t1 < 0.35) {
+    const k = (t - stop.t1) / 0.35, speed = clamp(Math.abs(stop.x1 - stop.x0) / Math.max(0.2, stop.t1 - stop.t0) / 500, 0.3, 1.5);
+    const sway = Math.sin(Math.PI * k) * (1 - k) * speed;
+    if (isPerson) pose.lean = (pose.lean ?? 0) + 0.2 * sway; else pose.tilt = (pose.tilt ?? 0) + 0.12 * sway;
   }
   // 被打中：往後仰一下
   for (const o of list.overlays ?? []) {
