@@ -88,9 +88,28 @@ export async function buildScore(model, sampleRate = 48000) {
     }
   }
 
+  // ---- 配音 ----
+  // model.voices：[{ t, data: Float32Array, rate }]（見 voice.js 的 attachVoices）。
+  // 有人說話時背景音樂降到約三分之一，說完再慢慢回來；配了音的台詞不再加「嗶嗶」的說話音效。
+  const voices = [...(model.voices ?? [])].filter((v) => v.t < dur).sort((a, b) => a.t - b.t);
+  if (voices.length) {
+    const voiceBus = ac.createGain(); voiceBus.gain.value = 1.6; voiceBus.connect(master);
+    const base = music.gain.value;
+    for (const v of voices) {
+      const b = ac.createBuffer(1, v.data.length, v.rate);
+      b.copyToChannel(v.data, 0);
+      const src = ac.createBufferSource(); src.buffer = b; src.connect(voiceBus); src.start(v.t);
+      const end = v.t + v.data.length / v.rate;
+      music.gain.setTargetAtTime(base * 0.35, Math.max(0, v.t - 0.12), 0.05);
+      music.gain.setTargetAtTime(base, end + 0.05, 0.25);
+    }
+  }
+  const voiced = (t) => voices.some((v) => Math.abs(v.t - t) < 0.3);
+
   // ---- 音效 ----
   for (const e of model.sfx) {
     const t = e.t, bus = sfxBus;
+    if (e.kind === 'blip' && voiced(t)) continue;
     switch (e.kind) {
       case 'whoosh': hiss(t, 0.3, { vol: 0.35, type: 'bandpass', f: 600, f2: 3000, q: 2, bus }); break;
       case 'hit': hiss(t, 0.18, { vol: 0.6, type: 'lowpass', f: 2500, bus }); tone(t, 160, 0.15, { type: 'sine', vol: 0.6, slideTo: 50, rel: 0.05, bus }); break;

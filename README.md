@@ -26,6 +26,7 @@ canvas + 配樂 ──exporter.js（WebCodecs + mp4-muxer）──▶ MP4
 - **天氣**（`scene.js`）：下雨、下雪是陰天，不畫太陽與月亮、雲變多變灰；雨天整體色調壓暗。
 - **對話框**（`painter.js` 的 `placeBubble`）：避開正在顯示的字幕與其他對話框；特寫時頭頂上放不下就放到頭的旁邊。
 - **動畫原理**：轉身時身體先壓扁再翻面（`compile.js` 的 `TURN`）；起步前往後一縮（預備動作）、停步後往前晃一下（慣性）；跳躍與驚嚇有擠壓伸展（姿勢的 `sq`，`rig.js` 以腳底為基準縮放）。
+- **配音**（`engine/voice.js`）：劇本寫好後，整部動畫的台詞一次送到 Claude Flow 的 `/api/animate/voice`（`ClaudeFlowAnimate.speak`），回傳每句的語音。語音比說話動作長時拉長說話時間，之後的動作、字幕、鏡頭一起往後移（`retimeForVoices`）；配樂混入語音並在說話時壓低音樂（`music.js`），匯出的 MP4 也有語音。角色的 `voice`（boy、girl、man、woman、old-man、old-woman、cat、dog）劇本沒寫時依外型推測（`script.js` 的 `guessVoice`）。AI 配音失敗或額度用完時，預覽改用瀏覽器內建語音念台詞（MP4 沒有）。
 - **固定種子**：所有隨機都來自 `RNG(...)`，同一份劇本每次畫出來都一樣。
 
 ## 和 Claude Flow 的關係

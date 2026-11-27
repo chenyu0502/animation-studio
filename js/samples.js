@@ -36,8 +36,8 @@ export const SAMPLES = [
     script: {
       title: '雪地大戰', duration: 12, mood: 'happy', scene: 'snow', time: 'day',
       characters: [
-        { id: 'a', kind: 'person', name: '阿哲', color: 'blue', hair: 'spiky', x: 20, facing: 'right' },
-        { id: 'b', kind: 'person', name: '小涵', color: 'pink', hair: 'long', x: 78, facing: 'left' },
+        { id: 'a', kind: 'person', name: '阿哲', voice: 'boy', color: 'blue', hair: 'spiky', x: 20, facing: 'right' },
+        { id: 'b', kind: 'person', name: '小涵', voice: 'girl', color: 'pink', hair: 'long', x: 78, facing: 'left' },
       ],
       props: [],
       actions: [
@@ -61,7 +61,7 @@ export const SAMPLES = [
     script: {
       title: '公園的球', duration: 10, mood: 'happy', scene: 'park', time: 'sunset',
       characters: [
-        { id: 'kid', kind: 'person', name: '小明', color: 'green', hair: 'short', x: 20, facing: 'right' },
+        { id: 'kid', kind: 'person', name: '小明', voice: 'boy', color: 'green', hair: 'short', x: 20, facing: 'right' },
         { id: 'dog', kind: 'dog', name: '旺財', color: 'brown', x: 32, facing: 'right' },
       ],
       props: [{ id: 'ball', kind: 'ball', holder: 'kid' }],

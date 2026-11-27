@@ -76,6 +76,17 @@ export const OFF_LEFT = -10, OFF_RIGHT = 110;
 /** 角色位置：小於 0 一律當成左邊畫面外、大於 100 當成右邊畫面外，其餘夾在 5～95 */
 export const stagePos = (v) => (v < 0 ? OFF_LEFT : v > 100 ? OFF_RIGHT : Math.min(95, Math.max(5, v)));
 
+/** 配音類型（Claude Flow 的 /api/animate/voice 依此選聲音） */
+export const VOICES = { boy: '小男孩', girl: '小女孩', man: '男人', woman: '女人', 'old-man': '爺爺', 'old-woman': '奶奶', cat: '貓', dog: '狗' };
+/** 劇本沒寫配音時依外型推測：貓狗用自己的叫聲，人依體型與髮型 */
+export function guessVoice(c) {
+  if (c.kind !== 'person') return c.kind;
+  const female = ['long', 'pigtails', 'bun'].includes(c.hair);
+  if (c.hair === 'bald') return 'old-man';
+  if (c.size === 'small') return female ? 'girl' : 'boy';
+  return female ? 'woman' : 'man';
+}
+
 export const LIMITS = { minDur: 5, maxDur: 20, maxChars: 5, maxProps: 8, maxActions: 60 };
 
 const num = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
@@ -149,6 +160,9 @@ export function normalizeScript(raw) {
       x: stagePos(num(c?.x, 20 + (60 / Math.max(1, rawChars.length - 1 || 1)) * i)),
       facing: str(c?.facing).toLowerCase() === 'left' ? -1 : 1,
     });
+    const me = chars[chars.length - 1];
+    const v = str(c?.voice).toLowerCase();
+    me.voice = VOICES[v] && (me.kind === 'person' ? !['cat', 'dog'].includes(v) : v === me.kind) ? v : guessVoice(me);
   });
   if (!chars.length) {
     notes.push('劇本沒有角色，加入一個小朋友');

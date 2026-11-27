@@ -6,7 +6,8 @@ import { compile, charState, flying, groundProps, halfWidth, minGap, reach, touc
 import { cameraAt } from '../js/engine/render.js';
 import { placeBubble } from '../js/engine/painter.js';
 import { sceneLayers, skyColors } from '../js/engine/scene.js';
-import { SCENES, TIMES } from '../js/engine/script.js';
+import { SCENES, TIMES, guessVoice } from '../js/engine/script.js';
+import { decodePcm, retimeForVoices, voiceLines, attachVoices } from '../js/engine/voice.js';
 import { SAMPLES } from '../js/samples.js';
 
 const finite = (v) => typeof v !== 'number' || Number.isFinite(v);
@@ -242,4 +243,40 @@ test('丟出去的球還在空中時跑去撿：跑向落點，不會跑向丟�
   });
   assert.ok(xAt(m, 'dog', 2.9) > xAt(m, 'dog', 1.5), '狗要往球飛去的方向跑');
   for (const p of pickupGaps(m)) assert.ok(p.gap <= 120, `狗嘴離球 ${Math.round(p.gap)}px`);
+});
+
+// ---- 配音 ----
+test('角色的配音類型：劇本有寫就用，沒寫或不合理就依外型推測', () => {
+  const { script } = normalizeScript({ characters: [
+    { id: 'a', kind: 'person', size: 'small', hair: 'pigtails' }, { id: 'b', kind: 'person', hair: 'short', voice: 'old-man' },
+    { id: 'c', kind: 'dog', voice: 'girl' }, { id: 'd', kind: 'person', voice: 'cat', size: 'small', hair: 'spiky' },
+  ], actions: [{ t: 0, who: 'a', do: 'idle' }] });
+  assert.deepEqual(script.characters.map((c) => c.voice), ['girl', 'old-man', 'dog', 'boy']);
+  assert.equal(guessVoice({ kind: 'person', size: 'normal', hair: 'long' }), 'woman');
+});
+
+test('配音後拉長說話時間，之後的動作、字幕、鏡頭一起往後移，說話中途開始的不動', () => {
+  const { script } = normalizeScript({ duration: 10, characters: [{ id: 'a', kind: 'person', name: '小明' }, { id: 'b', kind: 'dog', name: '旺財' }],
+    actions: [{ t: 1, who: 'a', do: 'talk', text: '旺財，去撿！', dur: 1 }, { t: 1.5, who: 'b', do: 'jump' }, { t: 2, who: 'b', do: 'run', to: 80 }, { t: 4, who: 'b', do: 'talk', text: '汪！', dur: 1 }],
+    captions: [{ t: 6, dur: 1, text: '好狗狗' }], camera: [{ t: 0, shot: 'wide' }, { t: 3, shot: 'medium', on: 'b' }] });
+  const lines = voiceLines(script);
+  assert.deepEqual(lines.map((l) => [l.text, l.speaker]), [['旺財，去撿！', '小明'], ['汪！', '旺財']]);
+  const s = retimeForVoices(script, lines, [2.0, 0.5]);
+  const talk = s.actions.find((a) => a.text === '旺財，去撿！');
+  const extra = talk.dur - 1;
+  assert.ok(talk.dur >= 2.0, '說話時間要包住語音');
+  assert.equal(s.actions.find((a) => a.do === 'jump').t, 1.5, '說話中途開始的動作不動');
+  assert.equal(s.actions.find((a) => a.do === 'run').t, 2 + extra);
+  assert.equal(s.captions[0].t, 6 + extra);
+  assert.equal(s.camera[1].t, 3 + extra);
+  assert.equal(s.duration, 10 + extra);
+  assert.equal(s.actions.find((a) => a.text === '汪！').dur, 1, '語音比動作短就不改');
+  assert.equal(script.actions[0].dur, 1, '不改動原本的劇本');
+  const v = attachVoices(s, lines, [{ sampleRate: 24000, pcm: btoa('\x00\x40\x00\xc0') }, null]);
+  assert.equal(v.length, 1);
+  assert.ok(Math.abs(v[0].t - (talk.t + 0.08)) < 1e-9);
+});
+
+test('base64 的 16 位元 PCM 解成 -1～1', () => {
+  assert.deepEqual([...decodePcm(btoa('\x00\x40\x00\xc0\xff\x7f'))].map((x) => Math.round(x * 1000) / 1000), [0.5, -0.5, 1]);
 });

@@ -4,6 +4,8 @@
 // 會提供 window.ClaudeFlowAnimate，並發出 'claudeflow:animate-ready' 事件。
 //   ClaudeFlowAnimate.uid                                    目前使用者（作品與金鑰依帳號分開存）
 //   ClaudeFlowAnimate.writeScript(prompt, { duration, geminiKey }) → { available, script?, model?, reason? }
+//   ClaudeFlowAnimate.speak(lines, { mood, geminiKey }) → { available, clips?, model?, reason? }
+//     lines：[{ text, speaker, voice }]；clips 和 lines 一一對應，每個是 { sampleRate, pcm（16 位元 PCM 的 base64） }
 // 直接打開這個資料夾（沒有 Claude Flow）時沒有這個物件，只能玩範例。
 
 export function waitForBridge(timeoutMs = 8000) {
