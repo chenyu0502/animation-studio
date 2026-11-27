@@ -58,7 +58,10 @@ const fence = (pt, x0, x1, y, col, key) => {
 export function sceneLayers(scene, time, title = '', weather = 'none') {
   const overcast = isOvercast(weather), rainy = weather === 'rain';
   const night = time === 'night', sunset = time === 'sunset';
-  const R = RNG('scene', scene, title);
+  // 場景的隨機（雲的位置、大樓高度、樹、地上的小花）必須每一格都一樣。
+  // 繪圖函式每一格都會執行，所以每個函式一開始都用固定種子重新建立亂數產生器（fresh），
+  // 不能共用同一個：共用時每一格會接著抽新的亂數，雲、大樓、樹會在每一格換位置，看起來像在亂飛、閃爍。
+  const fresh = (tag) => RNG('scene', scene, title, tag);
   const layers = [];
   // 天空（太陽、月亮、雲）在極遠處：鏡頭平移時幾乎不動，只靠雲自己飄。
   // 原本和山放在同一層（0.35），鏡頭跟拍奔跑的角色時雲在畫面上每秒移動約 300px，看起來像在飛。
@@ -70,6 +73,7 @@ export function sceneLayers(scene, time, title = '', weather = 'none') {
 
   // 天體與雲
   if (scene !== 'room') skyL((pt, t) => {
+    const R = fresh('sky');
     if (overcast) { /* 陰天看不到太陽和月亮 */ }
     else if (night) { pt.fill(circlePts(1500, 190, 62, 36), '#fff4c8', { key: 'moon', outline: false, glow: true }); }
     else if (sunset) pt.fill(circlePts(1380, 520, 120, 40), '#ffd08a', { key: 'sun', outline: false, glow: true });
@@ -112,6 +116,7 @@ export function sceneLayers(scene, time, title = '', weather = 'none') {
     });
   } else if (scene === 'city') {
     far((pt) => {
+      const R = fresh('city');
       for (let i = 0; i < 11; i++) {
         const x = -150 + i * 210, h = 260 + R.r(0, 220), col = dim(['#9fb2c8', '#b4a8c4', '#a8bfb8', '#c4b4a0'][i % 4]);
         pt.fill(rectPts(x, 780 - h, 190, h), col, { key: 'bd' + i });
@@ -126,6 +131,7 @@ export function sceneLayers(scene, time, title = '', weather = 'none') {
     });
   } else if (scene === 'forest') {
     far((pt) => {
+      const R = fresh('forest');
       pt.fill([[-300, 720], [200, 520], [600, 640], [1000, 500], [1450, 620], [1900, 520], [2300, 700], [2300, 780], [-300, 780]], dim('#7fb27a'), { key: 'hill1' });
       for (let i = 0; i < 9; i++) tree(pt, -100 + i * 260 + R.r(-40, 40), 760, 0.8 + R.r(0, 0.3), dim('#4f8a5a', 0.45), 'ft' + i, false);
     });
@@ -170,6 +176,7 @@ export function sceneLayers(scene, time, title = '', weather = 'none') {
 
   // 地面
   near((pt) => {
+    const R = fresh('ground');
     const g = { snow: '#ffffff', beach: '#f1d9a0', city: '#7d7f8a', forest: '#4f8f42', park: '#6cb85a', room: '#c89464' }[scene];
     pt.fill([[-400, GROUND - 6], [W + 400, GROUND - 6], [W + 400, H + 300], [-400, H + 300]], dim(g, 0.3), { key: 'ground', outline: false, flat: true });
     if (scene === 'room') for (let i = 0; i < 12; i++) pt.fill(rectPts(-200 + i * 200, GROUND - 6, 3, 400), dim(shade(g, -0.15), 0.3), { key: 'board' + i, outline: false });
