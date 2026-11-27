@@ -5,7 +5,8 @@ import { normalizeScript } from '../js/engine/script.js';
 import { compile, charState, flying, groundProps, halfWidth, minGap, touchGap } from '../js/engine/compile.js';
 import { cameraAt } from '../js/engine/render.js';
 import { placeBubble } from '../js/engine/painter.js';
-import { skyColors } from '../js/engine/scene.js';
+import { sceneLayers, skyColors } from '../js/engine/scene.js';
+import { SCENES, TIMES } from '../js/engine/script.js';
 import { SAMPLES } from '../js/samples.js';
 
 const finite = (v) => typeof v !== 'number' || Number.isFinite(v);
@@ -193,4 +194,27 @@ test('不合理的位置：小於 0 當左邊畫面外、大於 100 當右邊畫
   const { script } = normalizeScript({ characters: [{ id: 'a', kind: 'dog', x: -50 }, { id: 'b', kind: 'cat', x: 300 }], actions: [{ t: 0, who: 'a', do: 'walk', to: 999 }] });
   assert.deepEqual(script.characters.map((c) => c.x), [-10, 110]);
   assert.equal(script.actions[0].to, 110);
+});
+
+// ---- 場景每一格都要一樣（不能每格重新抽亂數） ----
+const recorder = () => {
+  const shapes = {};
+  return { shapes, fill: (P, col, o = {}) => { shapes[o.key ?? Object.keys(shapes).length] = P.map(([x, y]) => [Math.round(x * 10) / 10, Math.round(y * 10) / 10]); }, line: () => {} };
+};
+test('場景同一個時間點畫兩次結果一樣，相鄰兩格的雲、大樓、樹不會跳位', () => {
+  for (const scene of Object.keys(SCENES)) for (const time of Object.keys(TIMES)) for (const weather of ['none', 'rain']) {
+    const layers = sceneLayers(scene, time, '測試', weather);
+    for (const [li, L] of layers.entries()) {
+      const a = recorder(), b = recorder(), c = recorder();
+      L.draw(a, 3); L.draw(b, 3); L.draw(c, 3 + 1 / 24);
+      assert.deepEqual(a.shapes, b.shapes, `${scene}/${time}/${weather} 第 ${li} 層兩次不同`);
+      for (const [k, P] of Object.entries(a.shapes)) {
+        const Q = c.shapes[k];
+        if (!Q) continue;
+        const move = Math.max(...P.map(([x, y], i) => Math.hypot(x - Q[i][0], y - Q[i][1])));
+        // 雲每秒最多飄 32px，一格約 1.3px；雲從右邊繞回左邊時會跳整個畫面寬，排除
+        assert.ok(move < 5 || move > 1900, `${scene}/${time}/${weather} 第 ${li} 層 ${k} 一格移動 ${move.toFixed(1)}px`);
+      }
+    }
+  }
 });
