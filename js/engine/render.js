@@ -19,19 +19,27 @@ export function cameraAt(model, t) {
   const push = 1 + 0.05 * EZ.io(seg(t, shot.t, tEnd));
   let cx = W / 2, cy = H / 2, z = ZOOM[shot.shot] * push;
   if (shot.on && model.byId[shot.on]) {
-    // 跟拍：取前後 0.3 秒的平均位置，角色移動時鏡頭不會抖
-    let sx = 0;
-    for (const d of [-0.3, -0.15, 0, 0.15, 0.3]) sx += charState(model, shot.on, clamp(t + d, shot.t, tEnd)).x;
-    cx = sx / 5;
     const ch = model.byId[shot.on];
-    const st = charState(model, shot.on, t);
     const S = (SIZES[ch.size] ?? 1) * CHAR_SCALE;
     const tall = (ch.kind === 'person' ? 270 : 125 * ANIMAL_SCALE) * S;
-    const rot = Math.abs(st.pose.rot ?? 0);
-    // 頭的高度：躺下（rot）時頭貼近地面
-    const headY = GROUND - tall * Math.cos(rot) - (st.pose.bodyY ?? 0) * S - 20;
-    if (rot > 0.3) cx += Math.sin(rot) * tall * 0.8 * -st.facing;
-    cy = shot.shot === 'close' ? headY + 40 : lerp(headY, GROUND - 60, 0.5);
+    /** 某個時間點鏡頭想對準的位置：身體位置，加上跌倒、躺下時頭偏離身體的補位 */
+    const aim = (tt) => {
+      const st = charState(model, shot.on, tt);
+      const rot = Math.abs(st.pose.rot ?? 0);
+      // 頭的高度：躺下（rot）時頭貼近地面
+      const headY = GROUND - tall * Math.cos(rot) - (st.pose.bodyY ?? 0) * S - 20;
+      const x = st.x + Math.sin(rot) * tall * 0.8 * -st.facing * EZ.io(clamp((rot - 0.1) / 0.4));
+      return [x, shot.shot === 'close' ? headY + 40 : lerp(headY, GROUND - 60, 0.5)];
+    };
+    // 跟拍：取前後 0.35 秒的加權平均。跌倒動作約 0.15 秒就倒下去，特寫若緊盯頭部，
+    // 整個畫面會在一兩格內甩動 300px 以上；平均之後鏡頭會平順地跟過去。
+    let sx = 0, sy = 0, sw = 0;
+    for (const d of [-0.35, -0.23, -0.12, 0, 0.12, 0.23, 0.35]) {
+      const w = 1 - Math.abs(d) * 1.6;
+      const [x, y] = aim(clamp(t + d, shot.t, tEnd));
+      sx += x * w; sy += y * w; sw += w;
+    }
+    cx = sx / sw; cy = sy / sw;
   }
   const hw = W / 2 / z, hh = H / 2 / z;
   cx = clamp(cx, hw - 60, W - hw + 60);
