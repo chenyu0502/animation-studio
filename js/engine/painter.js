@@ -92,23 +92,70 @@ export function defaultFace(pt, x, y, s, f, expr, mouth, o = {}) {
 }
 
 /** 對話框（螢幕座標）。text 會逐字出現 */
-export function drawBubble(ctx, style, text, x, y, u, key) {
+
+const area = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+
+/**
+ * 為對話框挑位置（x, y 是說話者頭頂的螢幕座標）。
+ * 候選：頭頂上（預設）、頭的左右兩側、頭的下方，以及每個要避開的區域（字幕、別人的對話框）的左、右、下。
+ * 以「和要避開的區域重疊的面積」為主、「離預設位置多遠」為輔打分數，挑最小的；
+ * 特寫時頭頂貼近畫面上緣，上面放不下，就會改放到旁邊。
+ */
+export function placeBubble(w, h, x, y, avoid = []) {
+  const fit = (bx, by) => ({ x: clamp(bx, 30, W - w - 30), y: clamp(by, 30, H - h - 30), w, h });
+  const base = fit(x - w / 2, y - h - 40);
+  const cands = [base, fit(x + 90, y + 10), fit(x - 90 - w, y + 10), fit(x - w / 2, y + 140)];
+  for (const r of avoid) cands.push(fit(r.x - w - 16, base.y), fit(r.x + r.w + 16, base.y), fit(base.x, r.y + r.h + 14), fit(r.x - w - 16, r.y), fit(r.x + r.w + 16, r.y));
+  const head = { x: x - 70, y: y - 10, w: 140, h: 160 };
+  const cost = (b) => {
+    let c = 0;
+    for (const r of avoid) c += area(b, r) * 0.5;
+    c += area(b, head) * 0.3; // 不要蓋住說話者的臉
+    if (b.y + b.h > y - 12) c += 300; // 不在頭頂上方：尾巴會斜著指，稍微扣分
+    return c + Math.abs(b.x - base.x) + Math.abs(b.y - base.y) * 1.5;
+  };
+  let best = base, bestC = cost(base);
+  for (const b of cands) { const c = cost(b); if (c < bestC) { best = b; bestC = c; } }
+  return best;
+}
+
+/** 字幕佔的區域（螢幕座標，比實際畫的框略大）；不在顯示時間內回傳 null */
+export function captionRect(ctx, c, t) {
+  if (t < c.t || t >= c.t + c.dur) return null;
+  ctx.save();
+  ctx.font = `900 90px ${FONT}`;
+  const w = ctx.measureText(c.text).width + 120;
+  ctx.restore();
+  const y = c.pos === 'bottom' ? H - 120 : c.pos === 'center' ? H / 2 : 120;
+  return { x: W / 2 - w / 2, y: y - 78, w, h: 156 };
+}
+
+/** 畫對話框；回傳它佔的區域，讓下一個對話框避開 */
+export function drawBubble(ctx, style, text, x, y, u, key, avoid = []) {
   const shown = text.slice(0, Math.max(1, Math.ceil([...text].length * clamp(u * 3.2)))) ;
   const size = 46, pad = 22;
   ctx.save();
   ctx.font = `800 ${size}px ${style.font ?? FONT}`;
   const w = Math.min(760, ctx.measureText(text).width) + pad * 2, h = size + pad * 1.6;
-  const bx = clamp(x - w / 2, 30, W - w - 30), by = clamp(y - h - 40, 30, H - h - 30);
+  const box = placeBubble(w, h, x, y, avoid);
+  const bx = box.x, by = box.y;
   const pop = EZ.back(seg(u, 0, 0.12)), out = 1 - seg(u, 0.93, 1);
   ctx.translate(x, by + h);
   ctx.scale(pop * out, pop * out);
   ctx.translate(-x, -(by + h));
-  const tail = [[clamp(x, bx + 30, bx + w - 30) - 16, by + h - 2], [clamp(x, bx + 30, bx + w - 30) + 16, by + h - 2], [x, Math.min(y - 10, by + h + 34)]];
+  // 尾巴從底邊伸出：對話框在頭頂上時指向頭頂；放到頭的旁邊或下方時，改從靠近說話者的那一側斜斜指向臉。
+  // 橫向最多偏 90px，避免拉成一條細長的線。
+  const above = by + h <= y - 12;
+  const baseX = clamp(x, bx + 30, bx + w - 30);
+  const tipX = clamp(x, baseX - 90, baseX + 90);
+  const tipY = above ? Math.min(y - 10, by + h + 34) : by + h + 34;
+  const tail = [[baseX - 16, by + h - 2], [baseX + 16, by + h - 2], [tipX, tipY]];
   (style.bubble ?? defaultBubble)(ctx, bx, by, w, h, tail, key);
   ctx.fillStyle = style.ink ?? '#2b2730';
   ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
   ctx.fillText([...shown].join(''), bx + pad, by + h / 2 + 2, w - pad * 2);
   ctx.restore();
+  return box;
 }
 
 function defaultBubble(ctx, x, y, w, h, tail) {

@@ -5,7 +5,7 @@ import { charState, flying, groundProps } from './compile.js';
 import { drawCharacter } from './rig.js';
 import { sceneLayers, skyColors, weatherParticles } from './scene.js';
 import { drawEffect, drawProp, fxDuration } from './things.js';
-import { drawBubble, drawCaption, makePainter } from './painter.js';
+import { captionRect, drawBubble, drawCaption, makePainter } from './painter.js';
 
 const ZOOM = { wide: 1, medium: 1.45, close: 2.15 };
 
@@ -64,8 +64,8 @@ export function renderFrame(ctx, model, style, tReal) {
   const t = style.onTwos ? Math.floor(frame / 2) * 2 / FPS : frame / FPS;
   const env = { t, frame, boil: Math.floor(frame / (style.boilEvery ?? 2)) };
   const s = model.script;
-  const key = s.scene + s.time + s.title;
-  if (!layerCache.has(key)) { layerCache.clear(); layerCache.set(key, sceneLayers(s.scene, s.time, s.title)); }
+  const key = s.scene + s.time + s.weather + s.title;
+  if (!layerCache.has(key)) { layerCache.clear(); layerCache.set(key, sceneLayers(s.scene, s.time, s.title, s.weather)); }
   const layers = layerCache.get(key);
   const cam = cameraAt(model, t);
   const { ctx: c, finish, scale: k = 1 } = style.begin ? style.begin(ctx, env) : { ctx, finish: null };
@@ -74,7 +74,7 @@ export function renderFrame(ctx, model, style, tReal) {
 
   c.save();
   c.setTransform(k, 0, 0, k, 0, 0);
-  const sky = skyColors(s.scene, s.time);
+  const sky = skyColors(s.scene, s.time, s.weather);
   style.sky(c, sky.top, sky.bottom, env);
   // 場景
   for (const L of layers) {
@@ -110,10 +110,12 @@ export function renderFrame(ctx, model, style, tReal) {
   if (sky.tint) { c.save(); c.globalCompositeOperation = 'multiply'; c.globalAlpha = sky.tint[1]; c.fillStyle = sky.tint[0]; c.fillRect(0, 0, W, H); c.restore(); }
   // 對話框與字幕：低解析度的畫風（像素）在放大後才畫，文字才看得清楚
   const texts = (g) => {
+    // 對話框避開正在顯示的字幕，以及先畫好的對話框
+    const avoid = s.captions.map((cap) => captionRect(g, cap, t)).filter(Boolean);
     for (const { ch, st } of states) {
       if (!st.talking || !anchors[ch.id]) continue;
       const [x, y] = toScreen(cam, [anchors[ch.id].head[0], anchors[ch.id].top]);
-      drawBubble(g, style, st.talking.text, x, y, st.talking.u, ch.id + st.talking.t0);
+      avoid.push(drawBubble(g, style, st.talking.text, x, y, st.talking.u, ch.id + st.talking.t0, avoid));
     }
     for (const cap of s.captions) drawCaption(g, style, cap, t);
   };

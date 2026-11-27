@@ -2,8 +2,23 @@
 // 只描述「有什麼形狀、什麼顏色」，怎麼上色、要不要描邊交給畫風。
 import { GROUND, RNG, W, H, circlePts, ellipsePts, rectPts, roundRectPts, mix, shade, TAU } from './core.js';
 
+/** 下雨或下雪時是陰天：不畫太陽、月亮，天空偏灰 */
+export const isOvercast = (weather) => weather === 'rain' || weather === 'snow';
+
 /** 天空與整體色調 */
-export function skyColors(scene, time) {
+export function skyColors(scene, time, weather = 'none') {
+  const clear = clearSky(scene, time);
+  if (scene === 'room' || !isOvercast(weather)) return clear;
+  // 雨天：整片灰藍、色調壓暗；雪天：灰白但明亮
+  if (weather === 'rain') {
+    if (time === 'night') return { top: '#141b2c', bottom: '#2c3548', tint: ['#1c2338', 0.36] };
+    return { top: mix(clear.top, '#6f7a8c', 0.75), bottom: mix(clear.bottom, '#aab3bf', 0.7), tint: ['#56627a', time === 'sunset' ? 0.2 : 0.16] };
+  }
+  if (time === 'night') return { top: '#1a2340', bottom: '#46506c', tint: clear.tint };
+  return { top: mix(clear.top, '#c3ccd8', 0.6), bottom: mix(clear.bottom, '#eef1f5', 0.5), tint: clear.tint };
+}
+
+function clearSky(scene, time) {
   if (scene === 'room') return { top: '#f3e6d4', bottom: '#f3e6d4', tint: time === 'night' ? ['#1c2350', 0.28] : time === 'sunset' ? ['#ff9a5a', 0.1] : null };
   if (time === 'night') return { top: '#0f1a3d', bottom: '#33457a', tint: ['#1c2350', 0.32] };
   if (time === 'sunset') return { top: '#5b6fb4', bottom: '#ffb07a', tint: ['#ff8a4a', 0.14] };
@@ -40,7 +55,8 @@ const fence = (pt, x0, x1, y, col, key) => {
 };
 
 /** 回傳三層：{ factor, draw(pt, t) }。factor 越小移動越慢（越遠） */
-export function sceneLayers(scene, time, title = '') {
+export function sceneLayers(scene, time, title = '', weather = 'none') {
+  const overcast = isOvercast(weather), rainy = weather === 'rain';
   const night = time === 'night', sunset = time === 'sunset';
   const R = RNG('scene', scene, title);
   const layers = [];
@@ -51,12 +67,15 @@ export function sceneLayers(scene, time, title = '') {
 
   // 天體與雲
   if (scene !== 'room') far((pt, t) => {
-    if (night) { pt.fill(circlePts(1500, 190, 62, 36), '#fff4c8', { key: 'moon', outline: false, glow: true }); }
+    if (overcast) { /* 陰天看不到太陽和月亮 */ }
+    else if (night) { pt.fill(circlePts(1500, 190, 62, 36), '#fff4c8', { key: 'moon', outline: false, glow: true }); }
     else if (sunset) pt.fill(circlePts(1380, 520, 120, 40), '#ffd08a', { key: 'sun', outline: false, glow: true });
     else pt.fill(circlePts(1560, 170, 70, 36), '#fff1a8', { key: 'sun', outline: false, glow: true });
-    for (let i = 0; i < 4; i++) {
+    // 陰天雲比較多、比較大、比較灰
+    const n = overcast ? 7 : 4, col = rainy ? dim('#9aa3b2', 0.4) : overcast ? dim('#e9edf2', 0.5) : dim('#ffffff', 0.55);
+    for (let i = 0; i < n; i++) {
       const x = ((R.r(0, W) + t * (14 + i * 6)) % (W + 400)) - 200;
-      cloud(pt, x, 130 + i * 55 + R.r(-20, 20), 0.7 + R.r(0, 0.5), 'cl' + i, dim('#ffffff', 0.55));
+      cloud(pt, x, (overcast ? 90 : 130) + i * (overcast ? 40 : 55) + R.r(-20, 20), (overcast ? 1.1 : 0.7) + R.r(0, 0.5), 'cl' + i, col);
     }
   });
 
@@ -167,9 +186,11 @@ export function weatherParticles(pt, weather, t, scene) {
     const sp = R.r(40, 110), x = (R.r(0, W) + Math.sin(t * 0.8 + i) * 30 + 2000) % W, y = (R.r(0, H) + t * sp) % (H + 20) - 10;
     pt.fill(circlePts(x, y, R.r(3, 7), 8), '#ffffff', { key: 'sn' + i, outline: false, alpha: 0.9 });
   }
-  if (weather === 'rain') for (let i = 0; i < 120; i++) {
-    const x = (R.r(0, W) - t * 220 + 4000) % W, y = (R.r(0, H) + t * 1300) % (H + 60) - 30;
-    pt.line([[x, y], [x - 8, y + 30]], '#a9c4e8', 3, { key: 'rn' + i, alpha: 0.7 });
+  // 雨絲：淺色、較長，在灰色天空上才看得清楚；分遠近兩層，遠的細而慢
+  if (weather === 'rain') for (let i = 0; i < 170; i++) {
+    const near = i % 3 === 0, sp = near ? 1500 : 1100, len = near ? 46 : 30;
+    const x = (R.r(0, W) - t * 260 + 4000) % W, y = (R.r(0, H) + t * sp) % (H + 80) - 40;
+    pt.line([[x, y], [x - len * 0.25, y + len]], near ? '#eef4ff' : '#d4deee', near ? 3.5 : 2.5, { key: 'rn' + i, alpha: near ? 0.8 : 0.6 });
   }
   if (weather === 'leaves' || weather === 'petals') for (let i = 0; i < 26; i++) {
     const x = (R.r(0, W) + Math.sin(t * 1.2 + i) * 60 - t * 40 + 4000) % W, y = (R.r(0, H) + t * R.r(40, 80)) % (H + 30) - 15;
