@@ -5,7 +5,10 @@ import { animalPose, blendPose, idlePose, personPose } from './rig.js';
 import { ANIMAL_SCALE, CHAR_SCALE, EZ, GROUND, clamp, lerp, seg } from './core.js';
 
 /** 劇本的 0..100 → 世界座標 x */
-export const stageX = (x) => 170 + x * 15.8;
+export const stageX = (x) => (x < 0 ? OFF_LEFT_X : x > 100 ? OFF_RIGHT_X : 170 + x * 15.8);
+/** 畫面外的世界座標：離邊緣夠遠，連最大的狗都完全看不到 */
+const OFF_LEFT_X = -300, OFF_RIGHT_X = 2220;
+const isOff = (wx) => wx < 0 || wx > 1920;
 const BLEND = 0.18;
 /** 舞台上角色中心能到的範圍（世界座標） */
 const MIN_X = 90, MAX_X = 1830;
@@ -53,7 +56,11 @@ export function compile(script) {
   const chars = script.characters;
   const byId = Object.fromEntries(chars.map((c) => [c.id, c]));
   const segs = Object.fromEntries(chars.map((c) => [c.id, []]));
-  const startX = spreadStart(chars, chars.map((c) => stageX(c.x)));
+  // 一開始在畫面外的角色不參與拉開（它們等一下才會走進來）
+  const onIdx = chars.map((c, i) => i).filter((i) => !isOff(stageX(chars[i].x)));
+  const spread = spreadStart(onIdx.map((i) => chars[i]), onIdx.map((i) => stageX(chars[i].x)));
+  const startX = chars.map((c) => stageX(c.x));
+  onIdx.forEach((i, n) => { startX[i] = spread[n]; });
   const start = Object.fromEntries(chars.map((c, i) => [c.id, { x: startX[i], facing: c.facing }]));
   const sfx = [];
   const autoFx = [];
@@ -143,7 +150,8 @@ export function compile(script) {
         dest = a.do === 'flee' ? other - side * 3 * minGap(ch, byId[a.to]) : other + side * touchGap(ch, byId[a.to]);
       } else if (a.to && propById[a.to]) { propX = propPlaceAt(a.to, t0).x; dest = propX + (here.x < propX ? -40 : 40); }
       else dest = here.x + facing * (a.do === 'flee' ? 500 : 320);
-      x1 = placeFor(clamp(dest, MIN_X, MAX_X), a.who, t1, a.do === 'flee' ? null : partner, here.x, propX);
+      // 走到畫面外（離場）：直接走出去，不用找落腳點
+      x1 = typeof a.to === 'number' && isOff(dest) ? dest : placeFor(clamp(dest, MIN_X, MAX_X), a.who, t1, a.do === 'flee' ? null : partner, here.x, propX);
       if (Math.abs(x1 - here.x) > 4) facing = x1 > here.x ? 1 : -1;
     } else if (a.target && byId[a.target]) {
       const ox = placeAt(a.target, t0).x;

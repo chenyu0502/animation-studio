@@ -177,3 +177,20 @@ test('下雨天的天空比晴天暗、偏灰', () => {
   const sunny = skyColors('city', 'day', 'none'), rainy = skyColors('city', 'day', 'rain');
   assert.ok(lum(rainy.top) < lum(sunny.top) && rainy.tint, JSON.stringify(rainy));
 });
+
+// ---- 畫面外進出場 ----
+test('角色可以從畫面外走進來，也可以走出畫面', () => {
+  const m = build({
+    characters: [{ id: 'kid', kind: 'person', x: 40 }, { id: 'cat', kind: 'cat', x: 110, facing: 'left' }],
+    actions: [{ t: 1, who: 'cat', do: 'walk', to: 60, dur: 2 }, { t: 5, who: 'kid', do: 'run', to: -10, dur: 1.5 }],
+  });
+  assert.ok(xAt(m, 'cat', 0.5) > 1920 + halfWidth(m.byId.cat), '一開始貓在右邊畫面外');
+  assert.ok(xAt(m, 'cat', 3.5) < 1800, '貓走進畫面');
+  assert.ok(xAt(m, 'kid', 7) < -halfWidth(m.byId.kid), '小孩跑出左邊畫面');
+});
+
+test('不合理的位置：小於 0 當左邊畫面外、大於 100 當右邊畫面外', () => {
+  const { script } = normalizeScript({ characters: [{ id: 'a', kind: 'dog', x: -50 }, { id: 'b', kind: 'cat', x: 300 }], actions: [{ t: 0, who: 'a', do: 'walk', to: 999 }] });
+  assert.deepEqual(script.characters.map((c) => c.x), [-10, 110]);
+  assert.equal(script.actions[0].to, 110);
+});

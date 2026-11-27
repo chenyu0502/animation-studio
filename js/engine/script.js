@@ -71,6 +71,11 @@ const OUTFIT_DEFAULTS = ['#3b6fd4', '#e0473c', '#4fa35a', '#f08bb0', '#f2c230', 
 const HAIR_COLORS = ['#3a2a24', '#2b2730', '#7a4a2a', '#c98a3a', '#3a2a24', '#5a3a2a'];
 const ANIMAL_COLORS = { cat: ['#e8833a', '#2b2730', '#f4f1ea', '#8d8d96', '#b9865a'], dog: ['#c98a4a', '#f4f1ea', '#5a3a2a', '#2b2730', '#e8c890'] };
 
+/** 畫面外的位置：-10 是左邊畫面外、110 是右邊畫面外（角色從這裡走進來，或走到這裡離開） */
+export const OFF_LEFT = -10, OFF_RIGHT = 110;
+/** 角色位置：小於 0 一律當成左邊畫面外、大於 100 當成右邊畫面外，其餘夾在 5～95 */
+export const stagePos = (v) => (v < 0 ? OFF_LEFT : v > 100 ? OFF_RIGHT : Math.min(95, Math.max(5, v)));
+
 export const LIMITS = { minDur: 5, maxDur: 20, maxChars: 5, maxProps: 8, maxActions: 60 };
 
 const num = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
@@ -141,7 +146,7 @@ export function normalizeScript(raw) {
       hairColor: colorOf(c?.hairColor, HAIR_COLORS[i % HAIR_COLORS.length]),
       pants: colorOf(c?.pants, '#33405a'),
       size: SIZES[str(c?.size).toLowerCase()] ? str(c?.size).toLowerCase() : 'normal',
-      x: Math.min(95, Math.max(5, num(c?.x, 20 + (60 / Math.max(1, rawChars.length - 1 || 1)) * i))),
+      x: stagePos(num(c?.x, 20 + (60 / Math.max(1, rawChars.length - 1 || 1)) * i)),
       facing: str(c?.facing).toLowerCase() === 'left' ? -1 : 1,
     });
   });
@@ -201,7 +206,7 @@ export function normalizeScript(raw) {
       const to = a?.to;
       if (charRef(to) && charRef(to) !== who) out.to = charRef(to);
       else if (propIds.has(str(to, 20))) out.to = str(to, 20);
-      else if (Number.isFinite(Number(to))) out.to = Math.min(95, Math.max(5, Number(to)));
+      else if (Number.isFinite(Number(to))) out.to = stagePos(Number(to));
       else if (out.target) out.to = out.target;
       else out.to = null;
     }
