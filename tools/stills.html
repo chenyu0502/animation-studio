@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>stills</title>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script type="module">
+  // 開發用：tools/stills.mjs 透過 window.still(sample, style, t) 拍單格
+  import { normalizeScript } from '../js/engine/script.js';
+  import { compile } from '../js/engine/compile.js';
+  import { renderFrame } from '../js/engine/render.js';
+  import { SAMPLES } from '../js/samples.js';
+  import cozy from '../js/styles/cozy.js';
+  import papercut from '../js/styles/papercut.js';
+  import pixel from '../js/styles/pixel.js';
+  const STY = { cozy, papercut, pixel };
+  const models = SAMPLES.map((s) => compile(normalizeScript(s.script).script));
+  window.notes = SAMPLES.map((s) => normalizeScript(s.script).notes);
+  window.still = (i, style, t) => {
+    const ctx = document.getElementById('c').getContext('2d');
+    renderFrame(ctx, models[i], STY[style], t);
+    return document.getElementById('c').toDataURL('image/jpeg', 0.8).split(',')[1];
+  };
+  window.ready = true;
+</script>

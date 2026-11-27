@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>動畫製作 · Claude Flow</title>
+  <meta name="description" content="說幾句話，用程式畫出一段動畫，再切換畫風看效果">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23b4583a'/%3E%3Cpath d='M22 18l26 14-26 14z' fill='%23fffaf5'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="back" href="/">← Claude Flow</a>
+    <h1>動畫製作</h1>
+    <span class="tag">第一期</span>
+  </header>
+
+  <main class="layout">
+    <section class="stage" aria-label="預覽">
+      <div class="screen">
+        <canvas id="view" width="1920" height="1080" aria-label="動畫預覽"></canvas>
+        <div class="screen-msg" id="screenMsg" hidden></div>
+      </div>
+      <div class="transport">
+        <button class="icon-btn" id="play" type="button" aria-label="暫停" title="播放／暫停（空白鍵）">❚❚</button>
+        <input id="scrub" type="range" min="0" max="287" value="0" aria-label="時間">
+        <span class="time" id="time">0.0 / 12.0 秒</span>
+        <button class="icon-btn" id="sound" type="button" aria-pressed="false" aria-label="開啟聲音" title="聲音">🔇</button>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>畫風</h2><span class="muted small">同一個故事，換一種畫法</span></div>
+        <div class="styles" id="styles" role="radiogroup" aria-label="畫風"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>下載</h2></div>
+        <div class="export-row">
+          <label class="field inline">解析度
+            <select id="res">
+              <option value="1080">1920 × 1080</option>
+              <option value="720">1280 × 720（檔案較小）</option>
+            </select>
+          </label>
+          <div class="btns">
+            <button class="btn" id="png" type="button">下載這一格 PNG</button>
+            <button class="btn primary" id="mp4" type="button">下載 MP4</button>
+          </div>
+        </div>
+        <div class="progress" id="progress" hidden>
+          <div class="bar"><span id="bar"></span></div>
+          <span class="muted small" id="progressLabel"></span>
+          <button class="btn ghost small" id="cancel" type="button">取消</button>
+        </div>
+        <p class="alert" id="exportMsg" hidden></p>
+        <p class="muted small">影片在你的瀏覽器裡產生，不會上傳。一般電腦 12 秒的影片大約半分鐘，製作中請不要切換分頁。</p>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <div class="card">
+        <div class="card-head"><h2>說出你的故事</h2></div>
+        <textarea id="prompt" rows="4" maxlength="300" placeholder="例如：兩隻小狗在公園搶一顆球，最後一起睡午覺"></textarea>
+        <div class="row">
+          <label class="field inline">長度
+            <select id="dur"><option value="8">8 秒</option><option value="12" selected>12 秒</option><option value="16">16 秒</option></select>
+          </label>
+          <button class="btn primary grow" id="generate" type="button">生成動畫</button>
+        </div>
+        <p class="alert" id="genMsg" hidden></p>
+        <div class="samples">
+          <span class="muted small">沒有點子？試試範例：</span>
+          <div id="samples" class="chips"></div>
+        </div>
+        <details class="tips">
+          <summary>可以寫什麼？</summary>
+          <p class="small">角色：人（小孩、大人）、貓、狗，最多 5 個。場景：雪地公園、海邊、城市街道、森林、草地公園、家裡客廳，可以是白天、黃昏或晚上。
+            動作：走、跑、追、逃、躡手躡腳、跳、揮手、歡呼、跳舞、說話、大笑、哭、生氣、嚇一跳、思考、指、坐、睡、跌倒、轉圈、丟、撿、給、吃、擁抱。
+            道具：球、雪球、魚、骨頭、禮物、蛋糕、花、氣球、星星、愛心、書、蘋果、冰淇淋、雨傘。</p>
+          <p class="small">沒有的東西會用最接近的代替，並在下方告訴你。</p>
+        </details>
+      </div>
+
+      <div class="card" id="scriptCard" hidden>
+        <div class="card-head"><h2 id="scriptTitle">劇本</h2><span class="muted small" id="scriptMeta"></span></div>
+        <div class="chips" id="cast"></div>
+        <ul class="notes" id="notes"></ul>
+        <details>
+          <summary>進階：編輯劇本</summary>
+          <textarea id="json" rows="12" spellcheck="false"></textarea>
+          <div class="row"><button class="btn small" id="applyJson" type="button">套用</button><span class="muted small" id="jsonMsg"></span></div>
+        </details>
+      </div>
+
+      <div class="card">
+        <details id="keyBox">
+          <summary><strong>Gemini 金鑰</strong> <span class="muted small" id="keyState"></span></summary>
+          <p class="small muted">生成劇本要用 Google 的 Gemini。可以填你自己的免費金鑰（到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 申請），只存在這台電腦的瀏覽器；沒填時使用網站的金鑰，額度大家共用。</p>
+          <div class="row">
+            <input id="key" type="password" autocomplete="off" placeholder="AIza…" aria-label="Gemini 金鑰">
+            <button class="btn small" id="saveKey" type="button">儲存</button>
+            <button class="btn ghost small" id="clearKey" type="button">清除</button>
+          </div>
+        </details>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>我的作品</h2><span class="muted small">存在這台電腦</span></div>
+        <ul class="works" id="works"></ul>
+      </div>
+    </aside>
+  </main>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
