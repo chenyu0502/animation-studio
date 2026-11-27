@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeScript } from '../js/engine/script.js';
-import { compile, charState, flying, groundProps, halfWidth, minGap, touchGap } from '../js/engine/compile.js';
+import { compile, charState, flying, groundProps, halfWidth, minGap, reach, touchGap } from '../js/engine/compile.js';
 import { cameraAt } from '../js/engine/render.js';
 import { placeBubble } from '../js/engine/painter.js';
 import { sceneLayers, skyColors } from '../js/engine/scene.js';
@@ -138,8 +138,10 @@ test('走過去撿東西：就算旁邊有人，也會站到道具旁邊', () =>
     props: [{ id: 'bone', kind: 'bone', x: 32 }],
     actions: [{ t: 1, who: 'dog', do: 'run', to: 33, dur: 0.6 }, { t: 1.7, who: 'dog', do: 'pickup', prop: 'bone' }],
   });
+  // 量狗嘴（頭在身體前面）到骨頭的距離，不是身體中心
   const bone = groundProps(m, 1.6).find((p) => p.id === 'bone');
-  assert.ok(Math.abs(xAt(m, 'dog', 1.7) - bone.wx) <= 70, `狗離骨頭 ${Math.round(Math.abs(xAt(m, 'dog', 1.7) - bone.wx))}`);
+  const st = charState(m, 'dog', 1.7), mouth = st.x + st.facing * reach(m.byId.dog);
+  assert.ok(Math.abs(mouth - bone.wx) <= 70, `狗嘴離骨頭 ${Math.round(Math.abs(mouth - bone.wx))}`);
 });
 
 test('對方等一下要來找我：我移動時會停在對方碰得到的地方', () => {
@@ -217,4 +219,27 @@ test('場景同一個時間點畫兩次結果一樣，相鄰兩格的雲、大�
       }
     }
   }
+});
+
+// ---- 撿東西：手或嘴要碰得到道具，不能隔空撿 ----
+/** 每個 pickup 開始時，角色的手／嘴到道具的距離 */
+const pickupGaps = (m) => m.script.actions.filter((a) => a.do === 'pickup' && a.prop).map((a) => {
+  const g = groundProps(m, a.t + a.dur * 0.45).find((p) => p.id === a.prop);
+  if (!g) return null;
+  const st = charState(m, a.who, a.t + a.dur * 0.45);
+  return { who: a.who, t: a.t, gap: Math.abs(st.x + st.facing * reach(m.byId[a.who]) - g.wx) };
+}).filter(Boolean);
+
+test('範例劇本撿東西時都碰得到道具', () => {
+  for (const s of SAMPLES) for (const p of pickupGaps(compile(normalizeScript(s.script).script))) assert.ok(p.gap <= 120, `${s.title ?? ''} ${p.who}@${p.t} 隔空 ${Math.round(p.gap)}px`);
+});
+
+test('丟出去的球還在空中時跑去撿：跑向落點，不會跑向丟的人', () => {
+  const m = build({
+    characters: [{ id: 'kid', kind: 'person', x: 20, facing: 'right' }, { id: 'dog', kind: 'dog', x: 32, facing: 'right' }],
+    props: [{ id: 'ball', kind: 'ball', holder: 'kid' }],
+    actions: [{ t: 1, who: 'kid', do: 'throw', prop: 'ball' }, { t: 1.6, who: 'dog', do: 'run', to: 'ball', dur: 1.3 }, { t: 3, who: 'dog', do: 'pickup', prop: 'ball' }],
+  });
+  assert.ok(xAt(m, 'dog', 2.9) > xAt(m, 'dog', 1.5), '狗要往球飛去的方向跑');
+  for (const p of pickupGaps(m)) assert.ok(p.gap <= 120, `狗嘴離球 ${Math.round(p.gap)}px`);
 });
