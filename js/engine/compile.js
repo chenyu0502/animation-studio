@@ -22,6 +22,9 @@ export function halfWidth(ch) {
   if (ch.kind === 'person') return 52 * s;
   return (ch.kind === 'cat' ? 98 : 105) * ANIMAL_SCALE * s;
 }
+/** 撿東西時，手（人）或嘴（貓狗，頭在身體最前面）離身體中心多遠 */
+export const reach = (ch) => (ch.kind === 'person' ? 40 : halfWidth(ch) * 0.95);
+
 /** 兩個角色站著時至少要隔多遠（各自半寬相加再留一點空隙） */
 export const minGap = (a, b) => halfWidth(a) + halfWidth(b) + 24;
 /** 互動（擁抱、給東西、說話）時站多近：身體剛好碰到 */
@@ -83,9 +86,19 @@ export function compile(script) {
   const propPlaceAt = (id, t) => {
     const p = propById[id];
     let x = stageX(p.x), holder = p.holder;
-    for (const e of propEvents[id]) {
+    const evs = propEvents[id];
+    for (let i = 0; i < evs.length; i++) {
+      const e = evs[i];
       if (t < e.t) break;
       if (e.type === 'hold') holder = e.who;
+      // 丟出去、還在空中：當成已經在落點。角色這時跑去撿，會跑向球要落下的地方（像狗預判落點），
+      // 不會以為球還在丟的人手上而跑反方向。
+      if (e.type === 'fly') {
+        holder = null;
+        const end = evs.slice(i + 1).find((n) => n.type === 'land' || n.type === 'drop' || n.type === 'gone');
+        if (end?.x !== undefined) x = end.x;
+        if (end?.type === 'gone') holder = '__gone';
+      }
       if (e.type === 'land' || e.type === 'drop') { holder = null; x = e.x; }
       if (e.type === 'gone') holder = '__gone';
     }
@@ -105,8 +118,8 @@ export function compile(script) {
       let c = 0;
       for (const o of others) c += Math.max(0, o.gap - Math.abs(x - o.x)) * 4;
       if (partner) c += Math.abs(Math.abs(x - px) - touch) * 6 + Math.max(0, touch * 0.8 - Math.abs(x - px)) * 20;
-      // 走過去要撿的道具：必須站到道具旁邊（60px 內），比避開別人重要
-      if (propX !== null) c += Math.max(0, Math.abs(x - propX) - 60) * 30;
+      // 走過去要撿的道具：手（人）或嘴（貓狗）要碰得到道具（誤差 60px 內），比避開別人重要
+      if (propX !== null) c += Math.max(0, Math.abs(Math.abs(x - propX) - reach(me)) - 60) * 30;
       // 劇本要角色走去遠處，卻停在原地（看起來像在原地跑步）：扣分
       if (Math.abs(dest - fromX) > 150) c += Math.max(0, 120 - Math.abs(x - fromX)) * 8;
       return c + Math.abs(x - dest);
@@ -141,14 +154,14 @@ export function compile(script) {
         if (cand && Math.abs(dest - placeAt(cand, t1).x) < minGap(ch, byId[cand]) * 2.5) partner = cand;
         if (pick) {
           const g = propPlaceAt(pick.prop, t1);
-          if (!g.holder) propX = g.x;
+          if (!g.holder) { propX = g.x; dest = g.x + (here.x < g.x ? -1 : 1) * reach(ch); }
         }
       } else if (a.to && byId[a.to]) {
         partner = a.to;
         const other = placeAt(a.to, a.do === 'chase' ? t1 : t0).x;
         const side = here.x < other ? -1 : 1;
         dest = a.do === 'flee' ? other - side * 3 * minGap(ch, byId[a.to]) : other + side * touchGap(ch, byId[a.to]);
-      } else if (a.to && propById[a.to]) { propX = propPlaceAt(a.to, t0).x; dest = propX + (here.x < propX ? -40 : 40); }
+      } else if (a.to && propById[a.to]) { propX = propPlaceAt(a.to, t0).x; dest = propX + (here.x < propX ? -1 : 1) * reach(ch); }
       else dest = here.x + facing * (a.do === 'flee' ? 500 : 320);
       // 走到畫面外（離場）：直接走出去，不用找落腳點
       x1 = typeof a.to === 'number' && isOff(dest) ? dest : placeFor(clamp(dest, MIN_X, MAX_X), a.who, t1, a.do === 'flee' ? null : partner, here.x, propX);
